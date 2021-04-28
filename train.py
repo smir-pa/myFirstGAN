@@ -14,24 +14,37 @@ import matplotlib.animation as animation
 from IPython.display import HTML
 from params import *
 from gan import Discriminator, Generator, weights_init
+from datetime import datetime
 
 
 if __name__ == '__main__':
+    t0 = datetime.now()
     if not os.path.exists('res/out'):
         os.mkdir('res/out')
     else:
-        shutil.rmtree('res/out')
-        os.mkdir('res/out')
+        pass
+        # shutil.rmtree('res/out')
+        # os.mkdir('res/out')
     # Для повторного воспроизведения эксперимента
     torch.manual_seed(42)
-    # Загрузка датасета
-    dataset = dset.ImageFolder(path,
-                               transform=transforms.Compose([
-                                   transforms.Resize(image_size),
-                                   transforms.CenterCrop(image_size),
-                                   transforms.ToTensor(),
-                                   transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                               ]))
+    # Загрузка и предобработка датасета
+    if channels == 3:
+        dataset = dset.ImageFolder(path,
+                                   transform=transforms.Compose([
+                                       transforms.Resize(image_size),
+                                       transforms.CenterCrop(image_size),
+                                       transforms.ToTensor(),
+                                       transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                                   ]))
+    else:
+        dataset = dset.ImageFolder(path,
+                                   transform=transforms.Compose([
+                                       transforms.Grayscale(1),
+                                       transforms.Resize(image_size),
+                                       transforms.CenterCrop(image_size),
+                                       transforms.ToTensor(),
+                                       transforms.Normalize((0.5, ), (0.5, )),
+                                   ]))
     # Создание загрузчика
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                              shuffle=True, num_workers=workers)
@@ -48,7 +61,7 @@ if __name__ == '__main__':
     plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:64], padding=2, normalize=True).cpu(), (1, 2, 0)))'''
 
     # Создание генератора
-    generator = Generator(gpu_num).to(device)
+    generator = Generator(gen_input).to(device)
 
     # Включение нескольких GPU, если возможно
     if (device.type == 'cuda') and (gpu_num > 1):
@@ -59,7 +72,7 @@ if __name__ == '__main__':
     print(generator)
 
     # Создание дискриминатора
-    discriminator = Discriminator(gpu_num).to(device)
+    discriminator = Discriminator().to(device)
 
     # Включение нескольких GPU, если возможно
     if (device.type == 'cuda') and (gpu_num > 1):
@@ -73,16 +86,16 @@ if __name__ == '__main__':
     loss_func = nn.BCELoss()
 
     # Создание вектора шума для генератора
-    fixed_noise = torch.randn(image_size, gen_input, 1, 1, device=device)
-    # fixed_noise = torch.randn(64, gen_input, 1, 1, device=device)
+    fixed_noise = torch.randn(batch_size, gen_input, 1, 1, device=device)
+    # fixed_noise = torch.randn(image_size, gen_input, 1, 1, device=device)
 
     # Метки классов
     real_label = 1.
     fake_label = 0.
 
     # Оптимизаторы Adam (стохастический градиентный спуск) для дискриминатора и генератора
-    dis_optimizer = optim.Adam(discriminator.parameters(), lr=l_rate, betas=(beta1, 0.999))
-    gen_optimizer = optim.Adam(generator.parameters(), lr=l_rate, betas=(beta1, 0.999))
+    dis_optimizer = optim.Adam(discriminator.parameters(), lr=dis_l_rate, betas=(beta1, 0.999))
+    gen_optimizer = optim.Adam(generator.parameters(), lr=gen_l_rate, betas=(beta1, 0.999))
 
     # Цикл обучения
 
@@ -148,9 +161,8 @@ if __name__ == '__main__':
 
             # Вывод статистики обучения
             if i % 50 == 0:
-                print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
-                      % (epoch, epochs, i, len(dataloader),
-                         dis_err.item(), gen_err.item(), dis_x, dis_gen_z1, dis_gen_z2))
+                print('[%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
+                      % (epoch + 1, epochs, dis_err.item(), gen_err.item(), dis_x, dis_gen_z1, dis_gen_z2))
 
             # Сохранение потерь для дальнейшего построения
             gen_losses.append(gen_err.item())
@@ -164,6 +176,10 @@ if __name__ == '__main__':
 
             iter_num += 1
 
+    t1 = datetime.now() - t0
+    t_save = datetime.now().strftime('(%d.%m.%Y %H-%M-%S)')
+    print("Времени прошло, с:", t1.seconds)
+
     # Построение графика изменения потерь
     plt.figure(figsize=(10, 5))
     plt.title("Потери генератора и дискриминатора во время обучения")
@@ -172,7 +188,7 @@ if __name__ == '__main__':
     plt.xlabel("iterations")
     plt.ylabel("Loss")
     plt.legend()
-    plt.savefig('res/out/loss.png')
+    plt.savefig('res/out/loss' + t_save + '.png')
     plt.show()
 
     '''# Анимация изменений
@@ -190,12 +206,19 @@ if __name__ == '__main__':
     plt.subplot(1, 2, 1)
     plt.axis("off")
     plt.title("Реальные")
-    plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:64], padding=5, normalize=True).cpu(), (1, 2, 0)))
+    plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:64], padding=2, normalize=True).cpu(), (1, 2, 0)))
 
     # Вывод поддельных из последней эпохи
     plt.subplot(1, 2, 2)
     plt.axis("off")
     plt.title("Поддельные (совсем как настоящие)")
     plt.imshow(np.transpose(img_list[-1], (1, 2, 0)))
-    plt.savefig('res/out/real_vs_fake.png')
+    plt.savefig('res/out/real_vs_fake' + t_save + '.png')
     plt.show()
+
+    # Сохранение весов модели генератора
+    torch.save(generator.state_dict(), 'res/out/generator' + t_save + '.pt')
+
+    # Параметры сохраненной модели
+    shutil.copy('params.py', 'res/out/params' + t_save + '.txt')
+
