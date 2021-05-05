@@ -1,7 +1,6 @@
 
 import os
 import shutil
-import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data
@@ -10,8 +9,6 @@ import torchvision.transforms as transforms
 import torchvision.utils as vutils
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-from IPython.display import HTML
 from params import *
 from gan import Discriminator, Generator, weights_init
 from datetime import datetime
@@ -21,12 +18,10 @@ if __name__ == '__main__':
     t0 = datetime.now()
     if not os.path.exists('res/out'):
         os.mkdir('res/out')
-    else:
-        pass
-        # shutil.rmtree('res/out')
-        # os.mkdir('res/out')
+
     # Для повторного воспроизведения эксперимента
     torch.manual_seed(42)
+
     # Загрузка и предобработка датасета
     if channels == 3:
         dataset = dset.ImageFolder(path,
@@ -45,20 +40,13 @@ if __name__ == '__main__':
                                        transforms.ToTensor(),
                                        transforms.Normalize((0.5, ), (0.5, )),
                                    ]))
+
     # Создание загрузчика
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                              shuffle=True, num_workers=workers)
 
     # Выбор устройства (GPU/CPU)
     device = torch.device("cuda:0" if (torch.cuda.is_available() and gpu_num > 0) else "cpu")
-
-    '''# Вывод тренировочных изображений
-    real_batch = next(iter(dataloader))
-    plt.figure(figsize=(8, 8))
-    plt.axis("off")
-    plt.title("Training Images")
-    plt.savefig('res/out/all_train.png')
-    plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:64], padding=2, normalize=True).cpu(), (1, 2, 0)))'''
 
     # Создание генератора
     generator = Generator(gen_input).to(device)
@@ -87,15 +75,14 @@ if __name__ == '__main__':
 
     # Создание вектора шума для генератора
     fixed_noise = torch.randn(batch_size, gen_input, 1, 1, device=device)
-    # fixed_noise = torch.randn(image_size, gen_input, 1, 1, device=device)
 
     # Метки классов
     real_label = 1.
     fake_label = 0.
 
     # Оптимизаторы Adam (стохастический градиентный спуск) для дискриминатора и генератора
-    dis_optimizer = optim.Adam(discriminator.parameters(), lr=dis_l_rate, betas=(beta1, 0.999))
-    gen_optimizer = optim.Adam(generator.parameters(), lr=gen_l_rate, betas=(beta1, 0.999))
+    dis_optimizer = optim.Adam(discriminator.parameters(), lr=dis_l_rate, betas=(beta1, beta2))
+    gen_optimizer = optim.Adam(generator.parameters(), lr=gen_l_rate, betas=(beta1, beta2))
 
     # Цикл обучения
 
@@ -206,7 +193,8 @@ if __name__ == '__main__':
     plt.subplot(1, 2, 1)
     plt.axis("off")
     plt.title("Реальные")
-    plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:64], padding=2, normalize=True).cpu(), (1, 2, 0)))
+    plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:64],
+                                             padding=2, normalize=True).cpu(), (1, 2, 0)))
 
     # Вывод поддельных из последней эпохи
     plt.subplot(1, 2, 2)
@@ -221,4 +209,3 @@ if __name__ == '__main__':
 
     # Параметры сохраненной модели
     shutil.copy('params.py', 'res/out/params' + t_save + '.txt')
-
